@@ -17,8 +17,8 @@ export function Header() {
     <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070b14]/90 backdrop-blur-xl">
       <div className="container mx-auto flex h-16 items-center gap-3 px-4">
         <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary/30 to-sky-500/10 ring-1 ring-primary/30">
-            <Image src="/logo.png" alt="TITAN SOUND" width={32} height={32} className="object-contain" priority />
+          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl ring-1 ring-primary/30">
+            <Image src="/logo.svg" alt="TITAN SOUND" width={36} height={36} className="object-contain" priority />
           </span>
           <span className="hidden font-bold tracking-tight text-white sm:inline">
             TITAN <span className="text-primary">SOUND</span>
