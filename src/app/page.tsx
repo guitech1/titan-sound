@@ -64,7 +64,7 @@ export default async function HomePage() {
                 <div className="absolute inset-0 rounded-[2rem] bg-gradient-to-br from-primary/40 via-transparent to-sky-500/20 opacity-80" />
                 <div className="absolute inset-3 rounded-[1.6rem] border border-white/10 bg-gradient-to-b from-white/5 to-transparent backdrop-blur-sm" />
                 <Image
-                  src="/logo.png"
+                  src="/logo.svg"
                   alt="TITAN SOUND"
                   width={220}
                   height={220}
