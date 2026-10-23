@@ -12,7 +12,7 @@ export default async function ProductsPage({
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, price, promotional_price, stock, is_active")
+    .select("id, name, slug, price, compare_at_price, stock_quantity, is_active")
     .eq("is_active", true)
     .order("created_at", { ascending: false })
     .limit(48);
@@ -41,7 +41,10 @@ export default async function ProductsPage({
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {products.map((p) => {
-            const price = Number(p.promotional_price ?? p.price);
+            const price = Number(p.price);
+            const compare = p.compare_at_price != null ? Number(p.compare_at_price) : null;
+            const display =
+              compare != null && compare > price ? price : price;
             return (
               <Link
                 key={p.id}
@@ -50,7 +53,14 @@ export default async function ProductsPage({
               >
                 <div className="aspect-square rounded-lg bg-secondary/50 mb-3" />
                 <h2 className="font-medium text-sm line-clamp-2 mb-2">{p.name}</h2>
-                <p className="text-primary font-bold">{formatCurrency(price)}</p>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-primary font-bold">{formatCurrency(display)}</p>
+                  {compare != null && compare > price && (
+                    <p className="text-xs text-muted-foreground line-through">
+                      {formatCurrency(compare)}
+                    </p>
+                  )}
+                </div>
               </Link>
             );
           })}
