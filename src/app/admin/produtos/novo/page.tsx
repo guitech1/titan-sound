@@ -130,20 +130,25 @@ export default function NewProductPage() {
       a.isPrimary === b.isPrimary ? 0 : a.isPrimary ? -1 : 1
     );
     for (let i = 0; i < ordered.length; i++) {
-      const up = await uploadProductImage(ordered[i].file, product.id);
-      if (up.error || !up.url) {
-        setError(`Produto salvo, mas falha na imagem ${i + 1}: ${up.error}`);
-        setSaving(false);
-        return;
-      }
-      const { error: imgErr } = await supabase.from("product_images").insert({
-        product_id: product.id,
-        image_url: up.url,
-        alt_text: form.name.trim(),
-        sort_order: i,
-      });
-      if (imgErr) {
-        setError(`Produto salvo, erro ao registrar imagem: ${imgErr.message}`);
+      try {
+        const up = await uploadProductImage(ordered[i].file, `products/${product.id}`);
+        const { error: imgErr } = await supabase.from("product_images").insert({
+          product_id: product.id,
+          image_url: up.url,
+          alt_text: form.name.trim(),
+          sort_order: i,
+        });
+        if (imgErr) {
+          setError(`Produto salvo, erro ao registrar imagem: ${imgErr.message}`);
+          setSaving(false);
+          return;
+        }
+      } catch (uploadErr) {
+        setError(
+          `Produto salvo, mas falha na imagem ${i + 1}: ${
+            uploadErr instanceof Error ? uploadErr.message : String(uploadErr)
+          }`
+        );
         setSaving(false);
         return;
       }
@@ -198,7 +203,7 @@ export default function NewProductPage() {
         </div>
         <div>
           <label className="block text-sm font-medium mb-1.5">Fotos do produto</label>
-          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} />
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} />
           <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
             <ImagePlus className="h-4 w-4" /> Selecionar imagens
           </Button>

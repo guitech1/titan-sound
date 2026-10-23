@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { verifyFluxPaySignature } from "@/services/fluxpay";
 
-/**
- * FluxPay webhook — signature validation + idempotent payment/order update.
- * Server-only: requires FLUXPAY_WEBHOOK_SECRET and SUPABASE_SERVICE_ROLE_KEY.
- */
-function getServiceClient() {
+function getServiceClient(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) {
@@ -18,14 +14,15 @@ function getServiceClient() {
 }
 
 async function markPaid(
-  supabase: ReturnType<typeof createClient>,
+  supabase: SupabaseClient,
   paymentId: string,
   orderId: string
 ) {
   const now = new Date().toISOString();
+
   const { error: payErr } = await supabase
     .from("payments")
-    .update({ status: "succeeded", updated_at: now })
+    .update({ status: "succeeded", updated_at: now } as Record<string, string>)
     .eq("id", paymentId)
     .neq("status", "succeeded");
 
@@ -40,7 +37,7 @@ async function markPaid(
       status: "paid",
       payment_status: "paid",
       updated_at: now,
-    })
+    } as Record<string, string>)
     .eq("id", orderId);
 
   if (orderErr) {
@@ -83,12 +80,11 @@ export async function POST(req: NextRequest) {
   const providerPaymentId = payload.data?.id;
   const orderIdFromMeta = payload.data?.metadata?.order_id;
 
-  // Ack non-success events without mutating state
   if (eventType !== "payment.succeeded" || !providerPaymentId) {
     return NextResponse.json({ received: true, ignored: true });
   }
 
-  let supabase;
+  let supabase: SupabaseClient;
   try {
     supabase = getServiceClient();
   } catch (e) {
@@ -102,7 +98,7 @@ export async function POST(req: NextRequest) {
     .eq("provider_payment_id", providerPaymentId)
     .maybeSingle();
 
-  let target = payment;
+  let target = payment as { id: string; order_id: string; status: string } | null;
 
   if (!target && orderIdFromMeta) {
     const { data: byOrder } = await supabase
@@ -112,16 +108,19 @@ export async function POST(req: NextRequest) {
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    target = byOrder;
+    target = byOrder as { id: string; order_id: string; status: string } | null;
   }
 
   if (!target) {
     return NextResponse.json({ received: true, matched: false });
   }
 
-  // Idempotency
   if (target.status === "succeeded") {
-    return NextResponse.json({ received: true, duplicate: true, order_id: target.order_id });
+    return NextResponse.json({
+      received: true,
+      duplicate: true,
+      order_id: target.order_id,
+    });
   }
 
   try {
