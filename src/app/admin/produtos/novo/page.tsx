@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { uploadProductImage } from "@/lib/storage";
+import { normalizePrice, normalizeCompareAtPrice } from "@/lib/product-prices";
 import { Button } from "@/components/ui/button";
 import { ImagePlus, Trash2, Star } from "lucide-react";
 
@@ -24,10 +25,10 @@ export default function NewProductPage() {
     slug: "",
     description: "",
     short_description: "",
-    price: 0,
-    compare_at_price: 0,
+    price: "",
+    compare_at_price: "",
     sku: "",
-    stock_quantity: 0,
+    stock_quantity: "0",
     is_active: true,
     is_featured: false,
     is_best_seller: false,
@@ -38,11 +39,7 @@ export default function NewProductPage() {
     const next: LocalImage[] = [];
     Array.from(files).forEach((file) => {
       if (!file.type.startsWith("image/")) return;
-      next.push({
-        file,
-        preview: URL.createObjectURL(file),
-        isPrimary: false,
-      });
+      next.push({ file, preview: URL.createObjectURL(file), isPrimary: false });
     });
     setImages((prev) => {
       const merged = [...prev, ...next];
@@ -67,10 +64,28 @@ export default function NewProductPage() {
     e.preventDefault();
     setSaving(true);
     setError("");
-    const supabase = createClient();
+
+    const priceResult = normalizePrice(form.price);
+    if (priceResult.error || priceResult.value === null) {
+      setError(priceResult.error || "Preço inválido.");
+      setSaving(false);
+      return;
+    }
+    const price = priceResult.value;
+
+    const compareResult = normalizeCompareAtPrice(form.compare_at_price, price);
+    if (compareResult.error) {
+      setError(compareResult.error);
+      setSaving(false);
+      return;
+    }
+    const compare_at_price: number | null = compareResult.value;
+
+    const stock = parseInt(form.stock_quantity, 10);
+    const stock_quantity = Number.isFinite(stock) && stock >= 0 ? stock : 0;
 
     const slug =
-      form.slug ||
+      form.slug.trim() ||
       form.name
         .toLowerCase()
         .normalize("NFD")
@@ -78,26 +93,35 @@ export default function NewProductPage() {
         .replace(/\s+/g, "-")
         .replace(/[^\w-]/g, "");
 
+    if (!form.name.trim()) {
+      setError("Informe o nome do produto.");
+      setSaving(false);
+      return;
+    }
+
+    const supabase = createClient();
+    const payload = {
+      name: form.name.trim(),
+      slug,
+      description: form.description.trim() || null,
+      short_description: form.short_description.trim() || null,
+      price,
+      compare_at_price,
+      sku: form.sku.trim() || null,
+      stock_quantity,
+      is_active: form.is_active,
+      is_featured: form.is_featured,
+      is_best_seller: form.is_best_seller,
+    };
+
     const { data: product, error: err } = await supabase
       .from("products")
-      .insert({
-        name: form.name,
-        slug,
-        description: form.description || null,
-        short_description: form.short_description || null,
-        price: form.price,
-        compare_at_price: form.compare_at_price || null,
-        sku: form.sku || null,
-        stock_quantity: form.stock_quantity,
-        is_active: form.is_active,
-        is_featured: form.is_featured,
-        is_best_seller: form.is_best_seller,
-      })
+      .insert(payload)
       .select("id")
       .single();
 
     if (err || !product) {
-      setError(err?.message || "Falha ao salvar produto");
+      setError(err?.message || "Falha ao salvar produto.");
       setSaving(false);
       return;
     }
@@ -115,7 +139,7 @@ export default function NewProductPage() {
       const { error: imgErr } = await supabase.from("product_images").insert({
         product_id: product.id,
         image_url: up.url,
-        alt_text: form.name,
+        alt_text: form.name.trim(),
         sort_order: i,
       });
       if (imgErr) {
@@ -159,32 +183,24 @@ export default function NewProductPage() {
         </div>
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium mb-1.5">Preço</label>
-            <input type="number" step="0.01" className={`${cls} h-11`} required value={form.price || ""} onChange={(e) => setForm({ ...form, price: parseFloat(e.target.value) || 0 })} />
+            <label className="block text-sm font-medium mb-1.5">Preço de venda (R$)</label>
+            <input type="number" step="0.01" min="0.01" className={`${cls} h-11`} required value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1.5">Preço comparado</label>
-            <input type="number" step="0.01" className={`${cls} h-11`} value={form.compare_at_price || ""} onChange={(e) => setForm({ ...form, compare_at_price: parseFloat(e.target.value) || 0 })} />
+            <label className="block text-sm font-medium mb-1.5">Preço comparado / riscado (opcional)</label>
+            <input type="number" step="0.01" min="0" className={`${cls} h-11`} placeholder="Deixe vazio se não houver" value={form.compare_at_price} onChange={(e) => setForm({ ...form, compare_at_price: e.target.value })} />
+            <p className="text-xs text-muted-foreground mt-1">Se informado, deve ser maior que o preço de venda. Campo vazio = null no banco.</p>
           </div>
         </div>
         <div>
           <label className="block text-sm font-medium mb-1.5">Estoque</label>
-          <input type="number" className={`${cls} h-11`} value={form.stock_quantity} onChange={(e) => setForm({ ...form, stock_quantity: parseInt(e.target.value) || 0 })} />
+          <input type="number" min="0" className={`${cls} h-11`} value={form.stock_quantity} onChange={(e) => setForm({ ...form, stock_quantity: e.target.value })} />
         </div>
-
         <div>
           <label className="block text-sm font-medium mb-1.5">Fotos do produto</label>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/avif"
-            multiple
-            className="hidden"
-            onChange={(e) => onFiles(e.target.files)}
-          />
+          <input ref={fileRef} type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} />
           <Button type="button" variant="outline" onClick={() => fileRef.current?.click()}>
-            <ImagePlus className="h-4 w-4" />
-            Selecionar imagens
+            <ImagePlus className="h-4 w-4" /> Selecionar imagens
           </Button>
           {images.length > 0 && (
             <div className="mt-3 grid grid-cols-3 sm:grid-cols-4 gap-3">
@@ -204,11 +220,7 @@ export default function NewProductPage() {
               ))}
             </div>
           )}
-          <p className="text-xs text-muted-foreground mt-2">
-            A estrela define a imagem principal. Upload no bucket titan-sound-media.
-          </p>
         </div>
-
         <div className="flex gap-4">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Ativo</label>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_featured} onChange={(e) => setForm({ ...form, is_featured: e.target.checked })} /> Destaque</label>
