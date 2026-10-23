@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    let subtotal = resolved.reduce((s, i) => s + i.line_total, 0);
+    const subtotal = resolved.reduce((s, i) => s + i.line_total, 0);
     let discount_total = 0;
     let coupon_id: string | null = null;
     let applied_coupon: string | null = null;
@@ -109,8 +109,8 @@ export async function POST(req: NextRequest) {
 
       if (coupon) {
         const now = new Date();
-        const validFrom = coupon.valid_from ? new Date(coupon.valid_from) : null;
-        const validUntil = coupon.valid_until ? new Date(coupon.valid_until) : null;
+        const validFrom = coupon.valid_from ? new Date(coupon.valid_from as string) : null;
+        const validUntil = coupon.valid_until ? new Date(coupon.valid_until as string) : null;
         const minOrder = Number(coupon.min_order_amount ?? 0);
         const used = Number(coupon.used_count ?? 0);
         const maxUses = coupon.max_uses != null ? Number(coupon.max_uses) : null;
@@ -126,8 +126,8 @@ export async function POST(req: NextRequest) {
             discount_total = Number(coupon.discount_value);
           }
           if (discount_total > subtotal) discount_total = subtotal;
-          coupon_id = coupon.id;
-          applied_coupon = coupon.code;
+          coupon_id = coupon.id as string;
+          applied_coupon = coupon.code as string;
         }
       }
     }
