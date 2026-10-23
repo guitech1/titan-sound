@@ -3,6 +3,10 @@ import { createClient } from "@/lib/supabase/server";
 import { createPixPayment } from "@/services/fluxpay";
 import { randomUUID } from "crypto";
 
+/**
+ * Creates order + items + payment, then FluxPay PIX charge.
+ * Prices and stock are loaded from the database (not trusted from the client).
+ */
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -11,20 +15,125 @@ export async function POST(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     const body = await req.json();
-    const { items, address, customer_email, customer_name, customer_note } = body;
+    const {
+      items,
+      address,
+      customer_email,
+      customer_name,
+      customer_note,
+      coupon_code,
+    } = body as {
+      items: { product_id: string; quantity: number }[];
+      address?: Record<string, unknown>;
+      customer_email?: string;
+      customer_name?: string;
+      customer_note?: string;
+      coupon_code?: string;
+    };
 
     if (!items?.length) {
       return NextResponse.json({ message: "Carrinho vazio." }, { status: 400 });
     }
 
-    const subtotal = items.reduce(
-      (s: number, i: { unit_price: number; quantity: number }) =>
-        s + Number(i.unit_price) * Number(i.quantity),
-      0
-    );
-    const shipping_total = subtotal >= 299 ? 0 : 25;
-    const discount_total = 0;
-    const total = subtotal + shipping_total - discount_total;
+    const productIds = [...new Set(items.map((i) => i.product_id))];
+    const { data: products, error: prodErr } = await supabase
+      .from("products")
+      .select(
+        "id, name, sku, price, stock_quantity, is_active, product_images(image_url, sort_order)"
+      )
+      .in("id", productIds)
+      .eq("is_active", true);
+
+    if (prodErr || !products?.length) {
+      return NextResponse.json(
+        { message: "Produtos inválidos ou indisponíveis.", detail: prodErr?.message },
+        { status: 400 }
+      );
+    }
+
+    const byId = new Map(products.map((p) => [p.id, p]));
+
+    const resolved: {
+      product_id: string;
+      quantity: number;
+      unit_price: number;
+      product_name: string;
+      product_sku: string | null;
+      product_image_url: string | null;
+      line_total: number;
+    }[] = [];
+
+    for (const item of items) {
+      const qty = Math.max(1, Math.floor(Number(item.quantity) || 0));
+      const product = byId.get(item.product_id);
+      if (!product || qty < 1) {
+        return NextResponse.json(
+          { message: `Produto indisponível: ${item.product_id}` },
+          { status: 400 }
+        );
+      }
+      const stock = Number(product.stock_quantity ?? 0);
+      if (stock < qty) {
+        return NextResponse.json(
+          { message: `Estoque insuficiente para ${product.name}.` },
+          { status: 400 }
+        );
+      }
+      const unit_price = Number(product.price);
+      const images = (product.product_images as { image_url: string; sort_order?: number }[]) || [];
+      images.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
+      resolved.push({
+        product_id: product.id,
+        quantity: qty,
+        unit_price,
+        product_name: product.name,
+        product_sku: product.sku || null,
+        product_image_url: images[0]?.image_url || null,
+        line_total: unit_price * qty,
+      });
+    }
+
+    let subtotal = resolved.reduce((s, i) => s + i.line_total, 0);
+    let discount_total = 0;
+    let coupon_id: string | null = null;
+    let applied_coupon: string | null = null;
+
+    if (coupon_code && typeof coupon_code === "string") {
+      const code = coupon_code.trim().toUpperCase();
+      const { data: coupon } = await supabase
+        .from("coupons")
+        .select("*")
+        .eq("code", code)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (coupon) {
+        const now = new Date();
+        const validFrom = coupon.valid_from ? new Date(coupon.valid_from) : null;
+        const validUntil = coupon.valid_until ? new Date(coupon.valid_until) : null;
+        const minOrder = Number(coupon.min_order_amount ?? 0);
+        const used = Number(coupon.used_count ?? 0);
+        const maxUses = coupon.max_uses != null ? Number(coupon.max_uses) : null;
+
+        const inWindow =
+          (!validFrom || validFrom <= now) && (!validUntil || validUntil >= now);
+        const underLimit = maxUses == null || used < maxUses;
+
+        if (inWindow && underLimit && subtotal >= minOrder) {
+          if (coupon.discount_type === "percent") {
+            discount_total = (subtotal * Number(coupon.discount_value)) / 100;
+          } else {
+            discount_total = Number(coupon.discount_value);
+          }
+          if (discount_total > subtotal) discount_total = subtotal;
+          coupon_id = coupon.id;
+          applied_coupon = coupon.code;
+        }
+      }
+    }
+
+    const shipping_total = subtotal - discount_total >= 299 ? 0 : 25;
+    const total = Math.max(0, subtotal - discount_total + shipping_total);
     const amount_cents = Math.round(total * 100);
 
     if (amount_cents < 1) {
@@ -44,6 +153,8 @@ export async function POST(req: NextRequest) {
         discount_total,
         shipping_total,
         total,
+        coupon_id,
+        coupon_code: applied_coupon,
         shipping_address: address || {},
         customer_note: customer_note || null,
       })
@@ -58,25 +169,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const orderItems = items.map(
-      (i: {
-        product_id: string;
-        quantity: number;
-        unit_price: number;
-        product_name?: string;
-        product_sku?: string;
-        product_image?: string;
-      }) => ({
-        order_id: order.id,
-        product_id: i.product_id,
-        product_name: i.product_name || "Produto",
-        product_sku: i.product_sku || null,
-        product_image_url: i.product_image || null,
-        quantity: i.quantity,
-        unit_price: i.unit_price,
-        line_total: Number(i.unit_price) * Number(i.quantity),
-      })
-    );
+    const orderItems = resolved.map((i) => ({
+      order_id: order.id,
+      product_id: i.product_id,
+      product_name: i.product_name,
+      product_sku: i.product_sku,
+      product_image_url: i.product_image_url,
+      quantity: i.quantity,
+      unit_price: i.unit_price,
+      line_total: i.line_total,
+    }));
 
     const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
     if (itemsErr) {
@@ -102,6 +204,7 @@ export async function POST(req: NextRequest) {
         {
           message: "Pedido criado, mas falha ao gerar PIX.",
           order_id: order.id,
+          order_number: order.order_number,
           detail: e instanceof Error ? e.message : String(e),
         },
         { status: 502 }
@@ -125,6 +228,10 @@ export async function POST(req: NextRequest) {
       order_id: order.id,
       order_number: order.order_number,
       amount: total,
+      subtotal,
+      discount_total,
+      shipping_total,
+      coupon_code: applied_coupon,
       pix_copy_paste: pix.pix_copy_paste,
       pix_qr_code_base64: pix.pix_qr_code_base64,
       payment_id: pix.id,

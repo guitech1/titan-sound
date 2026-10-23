@@ -1,5 +1,5 @@
 [build]
-  command = "npm install && npm run build"
+  command = "npm ci && npm run build"
   publish = ".next"
 
 [build.environment]
@@ -8,3 +8,12 @@
 
 [[plugins]]
   package = "@netlify/plugin-nextjs"
+
+# Required environment variables (set in Netlify UI, not in this file):
+# NEXT_PUBLIC_SUPABASE_URL
+# NEXT_PUBLIC_SUPABASE_ANON_KEY
+# NEXT_PUBLIC_APP_URL          (e.g. https://your-site.netlify.app)
+# FLUXPAY_API_URL
+# FLUXPAY_SECRET_KEY           (server-only)
+# FLUXPAY_WEBHOOK_SECRET       (server-only)
+# SUPABASE_SERVICE_ROLE_KEY    (server-only, webhook)
