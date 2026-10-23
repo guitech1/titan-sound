@@ -89,7 +89,11 @@ export default function AdminProductsPage() {
                   <td className="p-3 text-right">{formatCurrency(Number(p.price))}</td>
                   <td className="p-3 text-right">{p.stock_quantity ?? 0}</td>
                   <td className="p-3 text-center">
-                    <span className={`text-xs px-2 py-0.5 rounded-full ${p.is_active ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}>
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded-full ${
+                        p.is_active ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"
+                      }`}
+                    >
                       {p.is_active ? "Ativo" : "Inativo"}
                     </span>
                   </td>
@@ -107,7 +111,9 @@ export default function AdminProductsPage() {
               ))}
               {products.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">Nenhum produto.</td>
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    Nenhum produto.
+                  </td>
                 </tr>
               )}
             </tbody>
