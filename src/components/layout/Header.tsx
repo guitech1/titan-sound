@@ -14,59 +14,60 @@ export function Header() {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <header className="sticky top-0 z-50 border-b border-border bg-background/95 backdrop-blur">
-      <div className="container mx-auto flex h-16 items-center gap-4 px-4">
-        <Link href="/" className="flex items-center gap-2 shrink-0">
-          <Image src="/logo.png" alt="TITAN SOUND" width={40} height={40} className="rounded" />
-          <span className="font-bold tracking-tight hidden sm:inline">TITAN SOUND</span>
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070b14]/90 backdrop-blur-xl">
+      <div className="container mx-auto flex h-16 items-center gap-3 px-4">
+        <Link href="/" className="flex items-center gap-2.5 shrink-0">
+          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary/30 to-sky-500/10 ring-1 ring-primary/30">
+            <Image src="/logo.png" alt="TITAN SOUND" width={32} height={32} className="object-contain" priority />
+          </span>
+          <span className="hidden font-bold tracking-tight text-white sm:inline">
+            TITAN <span className="text-primary">SOUND</span>
+          </span>
         </Link>
 
-        <form
-          className="hidden md:flex flex-1 max-w-xl mx-auto"
-          action="/produtos"
-          method="get"
-        >
+        <form className="hidden md:flex flex-1 max-w-xl mx-auto" action="/produtos" method="get">
           <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               name="q"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar produtos..."
-              className="w-full h-10 rounded-lg border border-border bg-secondary/50 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+              placeholder="Buscar alto-falantes, módulos..."
+              className="h-10 w-full rounded-xl border border-white/10 bg-white/5 pl-10 pr-4 text-sm text-white placeholder:text-muted-foreground focus:border-primary/50 focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
           </div>
         </form>
 
-        <nav className="hidden lg:flex items-center gap-4 text-sm">
-          <Link href="/produtos" className="hover:text-primary">Produtos</Link>
-          <Link href="/avaliacoes" className="hover:text-primary">Avaliações</Link>
+        <nav className="hidden lg:flex items-center gap-1 text-sm">
+          <Link href="/produtos" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">Produtos</Link>
+          <Link href="/avaliacoes" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">Avaliações</Link>
         </nav>
 
-        <div className="flex items-center gap-2 ml-auto">
-          <Link href={user ? "/conta" : "/auth/login"} className="p-2 rounded-lg hover:bg-secondary">
+        <div className="ml-auto flex items-center gap-1">
+          <Link href={user ? "/conta" : "/auth/login"} className="rounded-xl p-2.5 text-slate-300 hover:bg-white/5 hover:text-white" aria-label="Conta">
             <User className="h-5 w-5" />
           </Link>
-          <Link href="/carrinho" className="relative p-2 rounded-lg hover:bg-secondary">
+          <Link href="/carrinho" className="relative rounded-xl p-2.5 text-slate-300 hover:bg-white/5 hover:text-white" aria-label="Carrinho">
             <ShoppingCart className="h-5 w-5" />
             {itemCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 h-5 min-w-5 rounded-full bg-primary text-[10px] font-bold text-white flex items-center justify-center px-1">
-                {itemCount}
-              </span>
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white">{itemCount}</span>
             )}
           </Link>
-          <button className="lg:hidden p-2" onClick={() => setOpen(!open)} aria-label="Menu">
+          <button type="button" className="rounded-xl p-2.5 text-slate-300 hover:bg-white/5 lg:hidden" onClick={() => setOpen(!open)} aria-label="Menu">
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
       {open && (
-        <div className="lg:hidden border-t border-border px-4 py-3 space-y-2">
-          <Link href="/produtos" className="block py-2" onClick={() => setOpen(false)}>Produtos</Link>
-          <Link href="/avaliacoes" className="block py-2" onClick={() => setOpen(false)}>Avaliações</Link>
-          <Link href="/carrinho" className="block py-2" onClick={() => setOpen(false)}>Carrinho</Link>
-          <Link href={user ? "/conta" : "/auth/login"} className="block py-2" onClick={() => setOpen(false)}>
+        <div className="border-t border-white/10 px-4 py-3 lg:hidden space-y-1 bg-[#070b14]">
+          <form action="/produtos" method="get" className="mb-2">
+            <input name="q" placeholder="Buscar..." className="h-10 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm" />
+          </form>
+          <Link href="/produtos" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>Produtos</Link>
+          <Link href="/avaliacoes" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>Avaliações</Link>
+          <Link href="/carrinho" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>Carrinho</Link>
+          <Link href={user ? "/conta" : "/auth/login"} className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>
             {user ? "Minha conta" : "Entrar"}
           </Link>
         </div>
