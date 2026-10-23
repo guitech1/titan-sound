@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Install, Typecheck, Lint, Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then
+            echo "Using npm ci with existing package-lock.json"
+            npm ci
+          else
+            echo "No package-lock.json — generating with npm install"
+            npm install --legacy-peer-deps
+          fi
+
+      - name: Commit package-lock.json when newly generated
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        run: |
+          if [ -f package-lock.json ] && git status --porcelain package-lock.json | grep -q .; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add package-lock.json
+            git commit -m "chore: add package-lock.json for reproducible installs"
+            git push
+            echo "package-lock.json committed to main"
+          else
+            echo "package-lock.json already tracked or unchanged"
+          fi
+
+      - name: TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Production build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder-anon-key-for-ci-build
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          FLUXPAY_API_URL: https://usefluxpay.com
+          FLUXPAY_SECRET_KEY: ""
+          FLUXPAY_WEBHOOK_SECRET: ""
+          SUPABASE_SERVICE_ROLE_KEY: ""
+        run: npm run build
+
+      - name: Upload build artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: next-build
+          path: .next
+          retention-days: 3
