@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { BottomNav } from "@/components/layout/BottomNav";
 import { PwaRegister } from "@/components/PwaRegister";
 import { AuthProvider } from "@/components/AuthProvider";
 
@@ -50,13 +51,14 @@ export default function RootLayout({
   return (
     <html lang="pt-BR" className="dark">
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col bg-background text-foreground`}
       >
         <PwaRegister />
         <AuthProvider>
           <Header />
           <main className="flex-1">{children}</main>
           <Footer />
+          <BottomNav />
         </AuthProvider>
       </body>
     </html>
