@@ -20,12 +20,12 @@ interface AuthStore {
 function mapProfile(profile: Profile, email?: string | null): User {
   return {
     id: profile.id,
-    email: profile.email || email || "",
+    email: email || "",
     full_name: profile.full_name,
     phone: profile.phone,
     role: profile.role === "admin" ? "admin" : "customer",
     avatar_url: profile.avatar_url,
-    is_active: profile.is_active ?? true,
+    is_active: true,
     created_at: profile.created_at || "",
     updated_at: profile.updated_at || "",
   };
@@ -52,6 +52,21 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         set({ user: mapProfile(profile as Profile, authUser.email), initialized: true });
         return;
       }
+      set({
+        user: {
+          id: authUser.id,
+          email: authUser.email || "",
+          full_name: authUser.user_metadata?.full_name || null,
+          phone: null,
+          role: "customer",
+          avatar_url: null,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        initialized: true,
+      });
+      return;
     }
     set({ user: null, initialized: true });
   },
@@ -102,14 +117,15 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
       set({ isLoading: false });
       return { success: false, error: error?.message || "Não foi possível criar a conta." };
     }
-    await new Promise((r) => setTimeout(r, 500));
+    // Aguarda trigger de profile (se existir)
+    await new Promise((r) => setTimeout(r, 600));
     const { data: profile } = await supabase
       .from("profiles")
       .select("*")
       .eq("id", data.user.id)
       .maybeSingle();
     if (profile) {
-      set({ user: mapProfile(profile as Profile, data.user.email), isLoading: false });
+      set({ user: mapProfile(profile as Profile, data.user.email || email), isLoading: false });
     } else {
       set({
         user: {
