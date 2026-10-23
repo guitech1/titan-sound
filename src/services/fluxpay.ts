@@ -1,18 +1,11 @@
 /**
  * FluxPay integration service for TITAN SOUND.
  *
- * Based on analysis of guitech1/fluxpay:
- * - Auth: Authorization: Bearer sk_test_... | sk_live_...
- * - Amounts in cents (integer)
- * - Create PIX: POST /v1/payments with payment_method: { type: "pix" }
- * - Response includes pix_copy_paste, pix_qr_code_base64, status
- * - Webhooks: FluxPay-Signature: t=<timestamp>,v1=<hmac-sha256>
- * - Events: payment.succeeded, payment.pending, payment.failed, etc.
- * - Idempotency via Idempotency-Key header
- *
  * NEVER expose secret keys to the browser.
  * All calls must go through Next.js API routes (server-side).
  */
+
+import { createHmac, timingSafeEqual } from "crypto";
 
 export type FluxPayEnvironment = "test" | "live";
 
@@ -129,14 +122,12 @@ export function verifyFluxPaySignature(
   const ts = parseInt(timestamp, 10);
   if (isNaN(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
 
-  const crypto = require("crypto") as typeof import("crypto");
-  const expected = crypto
-    .createHmac("sha256", webhookSecret)
+  const expected = createHmac("sha256", webhookSecret)
     .update(`${timestamp}.${rawBody}`)
     .digest("hex");
 
   try {
-    return crypto.timingSafeEqual(
+    return timingSafeEqual(
       Buffer.from(signature, "hex"),
       Buffer.from(expected, "hex")
     );
