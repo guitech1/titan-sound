@@ -191,7 +191,7 @@ export async function POST(req: NextRequest) {
       .insert({
         order_number,
         user_id: user.id,
-        status: "pending",
+        status: "awaiting_payment",
         payment_status: "pending",
         subtotal,
         discount_total,
