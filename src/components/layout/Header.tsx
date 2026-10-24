@@ -14,18 +14,20 @@ export function Header() {
   const user = useAuthStore((s) => s.user);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070b14]/90 backdrop-blur-xl">
-      <div className="container mx-auto flex h-16 items-center gap-3 px-4">
-        <Link href="/" className="flex items-center gap-2.5 shrink-0">
-          <span className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl ring-1 ring-primary/30">
-            <Image src="/logo.svg" alt="TITAN SOUND" width={36} height={36} className="object-contain" priority />
-          </span>
-          <span className="hidden font-bold tracking-tight text-white sm:inline">
-            TITAN <span className="text-primary">SOUND</span>
-          </span>
+    <header className="sticky top-0 z-40 border-b border-white/10 bg-[#070b14]/95 backdrop-blur-xl">
+      <div className="container mx-auto flex h-16 items-center gap-3 px-4 sm:h-[4.25rem]">
+        <Link href="/" className="flex shrink-0 items-center" aria-label="TITAN SOUND — início">
+          <Image
+            src="/logo.jpg"
+            alt="TITAN SOUND Audio Digital"
+            width={200}
+            height={56}
+            priority
+            className="h-10 w-auto object-contain object-left sm:h-12"
+          />
         </Link>
 
-        <form className="hidden md:flex flex-1 max-w-xl mx-auto" action="/produtos" method="get">
+        <form className="mx-auto hidden max-w-xl flex-1 md:flex" action="/produtos" method="get">
           <div className="relative w-full">
             <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
@@ -38,36 +40,69 @@ export function Header() {
           </div>
         </form>
 
-        <nav className="hidden lg:flex items-center gap-1 text-sm">
-          <Link href="/produtos" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">Produtos</Link>
-          <Link href="/avaliacoes" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">Avaliações</Link>
+        <nav className="hidden items-center gap-1 text-sm lg:flex">
+          <Link href="/produtos" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">
+            Produtos
+          </Link>
+          <Link href="/avaliacoes" className="rounded-lg px-3 py-2 text-slate-300 hover:bg-white/5 hover:text-white">
+            Avaliações
+          </Link>
         </nav>
 
         <div className="ml-auto flex items-center gap-1">
-          <Link href={user ? "/conta" : "/auth/login"} className="rounded-xl p-2.5 text-slate-300 hover:bg-white/5 hover:text-white" aria-label="Conta">
+          <Link
+            href={user ? "/conta" : "/auth/login"}
+            className="rounded-xl p-2.5 text-slate-300 hover:bg-white/5 hover:text-white"
+            aria-label="Conta"
+          >
             <User className="h-5 w-5" />
           </Link>
-          <Link href="/carrinho" className="relative rounded-xl p-2.5 text-slate-300 hover:bg-white/5 hover:text-white" aria-label="Carrinho">
+          <Link
+            href="/carrinho"
+            className="relative rounded-xl p-2.5 text-slate-300 hover:bg-white/5 hover:text-white"
+            aria-label="Carrinho"
+          >
             <ShoppingCart className="h-5 w-5" />
             {itemCount > 0 && (
-              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white">{itemCount}</span>
+              <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-white">
+                {itemCount}
+              </span>
             )}
           </Link>
-          <button type="button" className="rounded-xl p-2.5 text-slate-300 hover:bg-white/5 lg:hidden" onClick={() => setOpen(!open)} aria-label="Menu">
+          <button
+            type="button"
+            className="rounded-xl p-2.5 text-slate-300 hover:bg-white/5 lg:hidden"
+            onClick={() => setOpen(!open)}
+            aria-label="Menu"
+          >
             {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           </button>
         </div>
       </div>
 
       {open && (
-        <div className="border-t border-white/10 px-4 py-3 lg:hidden space-y-1 bg-[#070b14]">
+        <div className="space-y-1 border-t border-white/10 bg-[#070b14] px-4 py-3 lg:hidden">
           <form action="/produtos" method="get" className="mb-2">
-            <input name="q" placeholder="Buscar..." className="h-10 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm" />
+            <input
+              name="q"
+              placeholder="Buscar..."
+              className="h-10 w-full rounded-xl border border-white/10 bg-white/5 px-3 text-sm"
+            />
           </form>
-          <Link href="/produtos" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>Produtos</Link>
-          <Link href="/avaliacoes" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>Avaliações</Link>
-          <Link href="/carrinho" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>Carrinho</Link>
-          <Link href={user ? "/conta" : "/auth/login"} className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>
+          <Link href="/produtos" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>
+            Produtos
+          </Link>
+          <Link href="/avaliacoes" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>
+            Avaliações
+          </Link>
+          <Link href="/carrinho" className="block rounded-lg px-3 py-2.5 hover:bg-white/5" onClick={() => setOpen(false)}>
+            Carrinho
+          </Link>
+          <Link
+            href={user ? "/conta" : "/auth/login"}
+            className="block rounded-lg px-3 py-2.5 hover:bg-white/5"
+            onClick={() => setOpen(false)}
+          >
             {user ? "Minha conta" : "Entrar"}
           </Link>
         </div>
