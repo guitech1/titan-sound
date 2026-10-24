@@ -1,11 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createPixPayment } from "@/services/fluxpay";
 import { randomUUID } from "crypto";
 
+function getAdminClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error("SUPABASE_SERVICE_ROLE_KEY não configurada no servidor");
+  }
+  return createServiceClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 /**
  * Creates order + items + payment, then FluxPay PIX charge.
- * Prices and stock are loaded from the database (not trusted from the client).
+ * Prices from DB. Writes use service role (RLS blocks client inserts on orders).
+ * user_id is required by the database — login is mandatory.
  */
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +26,16 @@ export async function POST(req: NextRequest) {
     const {
       data: { user },
     } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        {
+          message: "Faça login para finalizar a compra.",
+          code: "AUTH_REQUIRED",
+        },
+        { status: 401 }
+      );
+    }
 
     const body = await req.json();
     const {
@@ -35,8 +58,19 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ message: "Carrinho vazio." }, { status: 400 });
     }
 
+    let admin;
+    try {
+      admin = getAdminClient();
+    } catch (e) {
+      console.error("[payments/create]", e);
+      return NextResponse.json(
+        { message: "Servidor sem configuração de banco (service role)." },
+        { status: 503 }
+      );
+    }
+
     const productIds = [...new Set(items.map((i) => i.product_id))];
-    const { data: products, error: prodErr } = await supabase
+    const { data: products, error: prodErr } = await admin
       .from("products")
       .select(
         "id, name, sku, price, stock_quantity, is_active, product_images(image_url, sort_order)"
@@ -46,7 +80,10 @@ export async function POST(req: NextRequest) {
 
     if (prodErr || !products?.length) {
       return NextResponse.json(
-        { message: "Produtos inválidos ou indisponíveis.", detail: prodErr?.message },
+        {
+          message: "Produtos inválidos ou indisponíveis.",
+          detail: prodErr?.message,
+        },
         { status: 400 }
       );
     }
@@ -68,7 +105,7 @@ export async function POST(req: NextRequest) {
       const product = byId.get(item.product_id);
       if (!product || qty < 1) {
         return NextResponse.json(
-          { message: `Produto indisponível: ${item.product_id}` },
+          { message: `Produto indisponível.` },
           { status: 400 }
         );
       }
@@ -80,7 +117,9 @@ export async function POST(req: NextRequest) {
         );
       }
       const unit_price = Number(product.price);
-      const images = (product.product_images as { image_url: string; sort_order?: number }[]) || [];
+      const images =
+        (product.product_images as { image_url: string; sort_order?: number }[]) ||
+        [];
       images.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       resolved.push({
         product_id: product.id,
@@ -100,7 +139,7 @@ export async function POST(req: NextRequest) {
 
     if (coupon_code && typeof coupon_code === "string") {
       const code = coupon_code.trim().toUpperCase();
-      const { data: coupon } = await supabase
+      const { data: coupon } = await admin
         .from("coupons")
         .select("*")
         .eq("code", code)
@@ -109,14 +148,19 @@ export async function POST(req: NextRequest) {
 
       if (coupon) {
         const now = new Date();
-        const validFrom = coupon.valid_from ? new Date(coupon.valid_from as string) : null;
-        const validUntil = coupon.valid_until ? new Date(coupon.valid_until as string) : null;
+        const validFrom = coupon.valid_from
+          ? new Date(coupon.valid_from as string)
+          : null;
+        const validUntil = coupon.valid_until
+          ? new Date(coupon.valid_until as string)
+          : null;
         const minOrder = Number(coupon.min_order_amount ?? 0);
         const used = Number(coupon.used_count ?? 0);
-        const maxUses = coupon.max_uses != null ? Number(coupon.max_uses) : null;
-
+        const maxUses =
+          coupon.max_uses != null ? Number(coupon.max_uses) : null;
         const inWindow =
-          (!validFrom || validFrom <= now) && (!validUntil || validUntil >= now);
+          (!validFrom || validFrom <= now) &&
+          (!validUntil || validUntil >= now);
         const underLimit = maxUses == null || used < maxUses;
 
         if (inWindow && underLimit && subtotal >= minOrder) {
@@ -142,11 +186,11 @@ export async function POST(req: NextRequest) {
 
     const order_number = `TS-${Date.now().toString(36).toUpperCase()}`;
 
-    const { data: order, error: orderErr } = await supabase
+    const { data: order, error: orderErr } = await admin
       .from("orders")
       .insert({
         order_number,
-        user_id: user?.id ?? null,
+        user_id: user.id,
         status: "pending",
         payment_status: "pending",
         subtotal,
@@ -164,7 +208,10 @@ export async function POST(req: NextRequest) {
     if (orderErr || !order) {
       console.error("[payments/create] order", orderErr);
       return NextResponse.json(
-        { message: "Não foi possível criar o pedido.", detail: orderErr?.message },
+        {
+          message: "Não foi possível criar o pedido.",
+          detail: orderErr?.message,
+        },
         { status: 500 }
       );
     }
@@ -180,10 +227,11 @@ export async function POST(req: NextRequest) {
       line_total: i.line_total,
     }));
 
-    const { error: itemsErr } = await supabase.from("order_items").insert(orderItems);
+    const { error: itemsErr } = await admin.from("order_items").insert(orderItems);
     if (itemsErr) {
+      console.error("[payments/create] items", itemsErr);
       return NextResponse.json(
-        { message: "Erro ao salvar itens.", detail: itemsErr.message },
+        { message: "Erro ao salvar itens do pedido.", detail: itemsErr.message },
         { status: 500 }
       );
     }
@@ -195,8 +243,8 @@ export async function POST(req: NextRequest) {
         amountCents: amount_cents,
         description: `Pedido ${order.order_number} — TITAN SOUND`,
         orderId: order.id,
-        customerEmail: customer_email,
-        customerName: customer_name,
+        customerEmail: customer_email || user.email || undefined,
+        customerName: customer_name || undefined,
         idempotencyKey,
       });
     } catch (e) {
@@ -211,7 +259,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    await supabase.from("payments").insert({
+    const { error: payErr } = await admin.from("payments").insert({
       order_id: order.id,
       provider: "fluxpay",
       provider_payment_id: pix.id,
@@ -223,6 +271,10 @@ export async function POST(req: NextRequest) {
       expires_at: pix.expires_at || null,
       provider_metadata: pix as unknown as Record<string, unknown>,
     });
+
+    if (payErr) {
+      console.error("[payments/create] payment row", payErr);
+    }
 
     return NextResponse.json({
       order_id: order.id,
