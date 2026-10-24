@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Titan Sound Banner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Orbitron:wght@800;900&family=Rajdhani:wght@500;600&display=swap">
+<style>
+  :root {
+    --ink: #020a10;
+    --cyan: #2de2e6;
+    --violet: #9b72f0;
+    --cream: #f4f6d8;
+    --gold: #e8e04a;
+    --white: #ffffff;
+    --font-display: "Orbitron", "Eurostile", "Arial Black", Impact, sans-serif;
+    --font-sub: "Rajdhani", "Arial Narrow", "Segoe UI", sans-serif;
+    color-scheme: dark;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--ink);
+    color: var(--white);
+  }
+  body {
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+  }
+  #stage {
+    --beat: 0;
+    position: relative;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    aspect-ratio: auto;
+    container-type: size;
+    overflow: hidden;
+    background: var(--ink);
+    border-radius: 0;
+    isolation: isolate;
+    flex: 1;
+  }
+  #stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  #fx { z-index: 3; pointer-events: none; }
+  .vignette {
+    position: absolute; inset: 0; z-index: 2; pointer-events: none;
+    background:
+      radial-gradient(ellipse at 58% 50%, rgba(2,10,16,0) 35%, rgba(2,10,16,.75) 100%),
+      linear-gradient(180deg, rgba(2,10,16,.55) 0%, rgba(2,10,16,0) 22%, rgba(2,10,16,0) 78%, rgba(2,10,16,.6) 100%);
+  }
+  .logo { position: absolute; inset: 0; z-index: 4; pointer-events: none; font-family: var(--font-display); text-transform: uppercase; }
+  .logo > * {
+    position: absolute; left: 36cqw; margin: 0; white-space: nowrap; line-height: 1;
+    animation: rise 1.1s cubic-bezier(.2,.8,.2,1) both;
+  }
+  .titan {
+    top: 16cqw; font-size: 9.2cqw; font-weight: 900; letter-spacing: .01em;
+    color: var(--white);
+    transform: skewX(-8deg);
+    text-shadow:
+      0 .35cqw 0 rgba(20,60,80,.9),
+      0 0 calc(1cqw + var(--beat) * 1.8cqw) rgba(45,226,230, calc(.35 + var(--beat) * .4));
+    animation-delay: .15s;
+  }
+  .sound {
+    top: 25.6cqw; font-size: 8cqw; font-weight: 900; letter-spacing: .01em;
+    transform: skewX(-8deg);
+    animation-delay: .35s;
+  }
+  .sou {
+    color: var(--cream);
+    -webkit-text-stroke: .32cqw var(--gold);
+    paint-order: stroke fill;
+    text-shadow: 0 0 calc(.8cqw + var(--beat) * 1.2cqw) rgba(232,224,74,.35);
+  }
+  .nd {
+    color: var(--violet);
+    -webkit-text-stroke: .2cqw #c9b0ff;
+    paint-order: stroke fill;
+    text-shadow: 0 0 calc(.9cqw + var(--beat) * 1.8cqw) rgba(155,114,240, calc(.5 + var(--beat) * .4));
+  }
+  .sub {
+    top: 35.6cqw; left: 36.6cqw; font-family: var(--font-sub); font-weight: 500;
+    font-size: 3.5cqw; letter-spacing: .07em; color: var(--white);
+    text-shadow: 0 0 1cqw rgba(45,226,230,.35);
+    animation-delay: .6s;
+  }
+  .flare {
+    position: absolute; z-index: 4; pointer-events: none;
+    left: 55.5cqw; top: 15.4cqw; width: 14cqw; height: 14cqw; margin: -7cqw 0 0 -7cqw;
+    background:
+      radial-gradient(circle, rgba(255,255,255,.95) 0 6%, rgba(120,235,255,.5) 14%, rgba(45,226,230,0) 60%),
+      linear-gradient(90deg, rgba(45,226,230,0), rgba(190,250,255,.7) 50%, rgba(45,226,230,0)) center / 100% .35cqw no-repeat;
+    opacity: calc(.45 + var(--beat) * .55);
+    transform: scale(calc(.8 + var(--beat) * .5));
+    mix-blend-mode: screen;
+    animation: fade 1.6s .5s both;
+  }
+  @keyframes rise { from { opacity: 0; filter: blur(.8cqw); translate: 0 2cqw; } to { opacity: 1; filter: blur(0); translate: 0 0; } }
+  @keyframes fade { from { opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .logo > *, .flare { animation: none; }
+  }
+</style>
+</head>
+<body>
+<div id="stage" role="img" aria-label="Banner animado Titan Sound Audio Digital">
+  <canvas id="gl"></canvas>
+  <div class="vignette"></div>
+  <canvas id="fx"></canvas>
+  <div class="flare"></div>
+  <div class="logo">
+    <div class="titan">Titan</div>
+    <div class="sound"><span class="sou">Sou</span><span class="nd">nd</span></div>
+    <div class="sub">AUDIO DIGITAL</div>
+  </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="/banner-hero-app.js"></script>
+</body>
+</html>
