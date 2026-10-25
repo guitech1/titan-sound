@@ -84,22 +84,43 @@ export default function NewProductPage() {
     const stock = parseInt(form.stock_quantity, 10);
     const stock_quantity = Number.isFinite(stock) && stock >= 0 ? stock : 0;
 
-    const slug =
-      form.slug.trim() ||
-      form.name
-        .toLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/\s+/g, "-")
-        .replace(/[^\w-]/g, "");
-
     if (!form.name.trim()) {
       setError("Informe o nome do produto.");
       setSaving(false);
       return;
     }
 
+    const baseSlug =
+      (form.slug.trim() ||
+        form.name
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/\s+/g, "-")
+          .replace(/[^\w-]/g, "")
+          .replace(/-+/g, "-")
+          .replace(/^-|-$/g, "")) || "produto";
+
     const supabase = createClient();
+
+    // Garante um slug livre sem alterar nem sobrescrever produtos existentes.
+    let slug = baseSlug;
+    let suffix = 2;
+    while (true) {
+      const { data: existing, error: slugCheckError } = await supabase
+        .from("products")
+        .select("id")
+        .eq("slug", slug)
+        .maybeSingle();
+
+      if (slugCheckError) {
+        setError("Não foi possível verificar a URL do produto: " + slugCheckError.message);
+        setSaving(false);
+        return;
+      }
+      if (!existing) break;
+      slug = `${baseSlug}-${suffix++}`;
+    }
     const payload = {
       name: form.name.trim(),
       slug,
