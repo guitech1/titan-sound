@@ -31,6 +31,82 @@ async function markPaid(
     throw payErr;
   }
 
+  // Verifica se é pedido parcelado
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, payment_method")
+    .eq("id", orderId)
+    .maybeSingle();
+
+  if (order?.payment_method === "pix_installment") {
+    // Atualiza a parcela vinculada a este payment
+    const { data: inst } = await supabase
+      .from("installments")
+      .select("id")
+      .eq("payment_id", paymentId)
+      .maybeSingle();
+
+    if (inst) {
+      await supabase
+        .from("installments")
+        .update({
+          status: "paid",
+          paid_at: now,
+          updated_at: now,
+        })
+        .eq("id", inst.id)
+        .neq("status", "paid");
+    } else {
+      // Fallback: busca por provider_payment_id no metadata do payment
+      const { data: pay } = await supabase
+        .from("payments")
+        .select("provider_payment_id, provider_metadata")
+        .eq("id", paymentId)
+        .maybeSingle();
+
+      if (pay?.provider_payment_id) {
+        await supabase
+          .from("installments")
+          .update({
+            status: "paid",
+            paid_at: now,
+            updated_at: now,
+          })
+          .eq("provider_payment_id", pay.provider_payment_id)
+          .neq("status", "paid");
+      }
+    }
+
+    // Verifica se todas as parcelas estão pagas
+    const { data: remaining } = await supabase
+      .from("installments")
+      .select("id")
+      .eq("order_id", orderId)
+      .neq("status", "paid")
+      .limit(1);
+
+    if (!remaining?.length) {
+      await supabase
+        .from("orders")
+        .update({
+          status: "paid",
+          payment_status: "paid",
+          updated_at: now,
+        } as Record<string, string>)
+        .eq("id", orderId);
+    } else {
+      await supabase
+        .from("orders")
+        .update({
+          payment_status: "partial",
+          updated_at: now,
+        } as Record<string, string>)
+        .eq("id", orderId);
+    }
+    return;
+  }
+
+  // Fluxo à vista (original)
   const { error: orderErr } = await supabase
     .from("orders")
     .update({
@@ -66,7 +142,7 @@ export async function POST(req: NextRequest) {
     data?: {
       id?: string;
       status?: string;
-      metadata?: { order_id?: string };
+      metadata?: { order_id?: string; installment_id?: string };
     };
   };
 

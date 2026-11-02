@@ -3,6 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { createPixPayment } from "@/services/fluxpay";
 import { randomUUID } from "crypto";
+import { isValidCpf, stripCpf } from "@/lib/cpf";
+import { hashCpf } from "@/lib/hash";
+import {
+  getInstallmentAmounts,
+  calculateInstallments,
+  type InstallmentOption,
+} from "@/lib/installments";
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,10 +22,39 @@ function getAdminClient() {
   });
 }
 
+function parseBirthDate(value: string): string | null {
+  // Aceita DD/MM/AAAA ou YYYY-MM-DD
+  const v = (value || "").trim();
+  let y: number, m: number, d: number;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
+    const [dd, mm, yyyy] = v.split("/").map(Number);
+    d = dd; m = mm; y = yyyy;
+  } else if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [yyyy, mm, dd] = v.split("-").map(Number);
+    d = dd; m = mm; y = yyyy;
+  } else {
+    return null;
+  }
+  const date = new Date(y, m - 1, d);
+  if (
+    date.getFullYear() !== y ||
+    date.getMonth() !== m - 1 ||
+    date.getDate() !== d
+  ) {
+    return null;
+  }
+  const now = new Date();
+  if (date > now) return null;
+  // Idade mínima razoável (16 anos)
+  const min = new Date();
+  min.setFullYear(min.getFullYear() - 16);
+  if (date > min) return null;
+  return `${y.toString().padStart(4, "0")}-${m.toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
+}
+
 /**
- * Creates order + items + payment, then FluxPay PIX charge.
- * Prices from DB. Writes use service role (RLS blocks client inserts on orders).
- * user_id is required by the database — login is mandatory.
+ * Cria pedido + (opcionalmente) parcelas internas + cobrança PIX via FluxPay.
+ * payment_method: "pix" | "pix_installment"
  */
 export async function POST(req: NextRequest) {
   try {
@@ -29,10 +65,7 @@ export async function POST(req: NextRequest) {
 
     if (!user) {
       return NextResponse.json(
-        {
-          message: "Faça login para finalizar a compra.",
-          code: "AUTH_REQUIRED",
-        },
+        { message: "Faça login para finalizar a compra.", code: "AUTH_REQUIRED" },
         { status: 401 }
       );
     }
@@ -45,6 +78,11 @@ export async function POST(req: NextRequest) {
       customer_name,
       customer_note,
       coupon_code,
+      payment_method = "pix",
+      installment_count,
+      buyer_cpf,
+      buyer_full_name,
+      buyer_birth_date,
     } = body as {
       items: { product_id: string; quantity: number }[];
       address?: Record<string, unknown>;
@@ -52,10 +90,44 @@ export async function POST(req: NextRequest) {
       customer_name?: string;
       customer_note?: string;
       coupon_code?: string;
+      payment_method?: "pix" | "pix_installment";
+      installment_count?: number;
+      buyer_cpf?: string;
+      buyer_full_name?: string;
+      buyer_birth_date?: string;
     };
 
     if (!items?.length) {
       return NextResponse.json({ message: "Carrinho vazio." }, { status: 400 });
+    }
+
+    const isInstallment = payment_method === "pix_installment";
+
+    if (isInstallment) {
+      const count = Number(installment_count);
+      if (![2, 3, 4].includes(count)) {
+        return NextResponse.json(
+          { message: "Parcelamento disponível apenas em 2x, 3x ou 4x." },
+          { status: 400 }
+        );
+      }
+      if (!buyer_cpf || !isValidCpf(buyer_cpf)) {
+        return NextResponse.json({ message: "CPF inválido." }, { status: 400 });
+      }
+      const fullName = (buyer_full_name || "").trim().replace(/\s+/g, " ");
+      if (!fullName || fullName.split(" ").length < 2) {
+        return NextResponse.json(
+          { message: "Informe nome e sobrenome completos." },
+          { status: 400 }
+        );
+      }
+      const birth = parseBirthDate(buyer_birth_date || "");
+      if (!birth) {
+        return NextResponse.json(
+          { message: "Data de nascimento inválida." },
+          { status: 400 }
+        );
+      }
     }
 
     let admin;
@@ -80,16 +152,12 @@ export async function POST(req: NextRequest) {
 
     if (prodErr || !products?.length) {
       return NextResponse.json(
-        {
-          message: "Produtos inválidos ou indisponíveis.",
-          detail: prodErr?.message,
-        },
+        { message: "Produtos inválidos ou indisponíveis.", detail: prodErr?.message },
         { status: 400 }
       );
     }
 
     const byId = new Map(products.map((p) => [p.id, p]));
-
     const resolved: {
       product_id: string;
       quantity: number;
@@ -104,10 +172,7 @@ export async function POST(req: NextRequest) {
       const qty = Math.max(1, Math.floor(Number(item.quantity) || 0));
       const product = byId.get(item.product_id);
       if (!product || qty < 1) {
-        return NextResponse.json(
-          { message: `Produto indisponível.` },
-          { status: 400 }
-        );
+        return NextResponse.json({ message: `Produto indisponível.` }, { status: 400 });
       }
       const stock = Number(product.stock_quantity ?? 0);
       if (stock < qty) {
@@ -118,8 +183,7 @@ export async function POST(req: NextRequest) {
       }
       const unit_price = Number(product.price);
       const images =
-        (product.product_images as { image_url: string; sort_order?: number }[]) ||
-        [];
+        (product.product_images as { image_url: string; sort_order?: number }[]) || [];
       images.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0));
       resolved.push({
         product_id: product.id,
@@ -148,19 +212,13 @@ export async function POST(req: NextRequest) {
 
       if (coupon) {
         const now = new Date();
-        const validFrom = coupon.valid_from
-          ? new Date(coupon.valid_from as string)
-          : null;
-        const validUntil = coupon.valid_until
-          ? new Date(coupon.valid_until as string)
-          : null;
+        const validFrom = coupon.valid_from ? new Date(coupon.valid_from as string) : null;
+        const validUntil = coupon.valid_until ? new Date(coupon.valid_until as string) : null;
         const minOrder = Number(coupon.min_order_amount ?? 0);
         const used = Number(coupon.used_count ?? 0);
-        const maxUses =
-          coupon.max_uses != null ? Number(coupon.max_uses) : null;
+        const maxUses = coupon.max_uses != null ? Number(coupon.max_uses) : null;
         const inWindow =
-          (!validFrom || validFrom <= now) &&
-          (!validUntil || validUntil >= now);
+          (!validFrom || validFrom <= now) && (!validUntil || validUntil >= now);
         const underLimit = maxUses == null || used < maxUses;
 
         if (inWindow && underLimit && subtotal >= minOrder) {
@@ -178,13 +236,27 @@ export async function POST(req: NextRequest) {
 
     const shipping_total = subtotal - discount_total >= 299 ? 0 : 25;
     const total = Math.max(0, subtotal - discount_total + shipping_total);
-    const amount_cents = Math.round(total * 100);
 
-    if (amount_cents < 1) {
+    if (total < 0.01) {
       return NextResponse.json({ message: "Valor inválido." }, { status: 400 });
     }
 
     const order_number = `TS-${Date.now().toString(36).toUpperCase()}`;
+
+    // --- Dados do comprador (parcelado) ---
+    let buyerCpfHash: string | null = null;
+    let buyerFullName: string | null = null;
+    let buyerBirth: string | null = null;
+    let instCount: number | null = null;
+    let interestRate = 0;
+
+    if (isInstallment) {
+      buyerCpfHash = hashCpf(buyer_cpf!);
+      buyerFullName = (buyer_full_name || "").trim().replace(/\s+/g, " ");
+      buyerBirth = parseBirthDate(buyer_birth_date || "");
+      instCount = Number(installment_count) as InstallmentOption;
+      interestRate = 0; // configurável no futuro
+    }
 
     const { data: order, error: orderErr } = await admin
       .from("orders")
@@ -193,6 +265,12 @@ export async function POST(req: NextRequest) {
         user_id: user.id,
         status: "awaiting_payment",
         payment_status: "pending",
+        payment_method: isInstallment ? "pix_installment" : "pix",
+        installment_count: instCount,
+        buyer_cpf_hash: buyerCpfHash,
+        buyer_full_name: buyerFullName,
+        buyer_birth_date: buyerBirth,
+        interest_rate: interestRate,
         subtotal,
         discount_total,
         shipping_total,
@@ -208,10 +286,7 @@ export async function POST(req: NextRequest) {
     if (orderErr || !order) {
       console.error("[payments/create] order", orderErr);
       return NextResponse.json(
-        {
-          message: "Não foi possível criar o pedido.",
-          detail: orderErr?.message,
-        },
+        { message: "Não foi possível criar o pedido.", detail: orderErr?.message },
         { status: 500 }
       );
     }
@@ -236,57 +311,179 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const idempotencyKey = `order-${order.id}-${randomUUID()}`;
+    // ========== PIX À VISTA (fluxo original) ==========
+    if (!isInstallment) {
+      const amount_cents = Math.round(total * 100);
+      const idempotencyKey = `order-${order.id}-${randomUUID()}`;
+      let pix;
+      try {
+        pix = await createPixPayment({
+          amountCents: amount_cents,
+          description: `Pedido ${order.order_number} — TITAN SOUND`,
+          orderId: order.id,
+          customerEmail: customer_email || user.email || undefined,
+          customerName: customer_name || undefined,
+          idempotencyKey,
+        });
+      } catch (e) {
+        return NextResponse.json(
+          {
+            message: "Pedido criado, mas falha ao gerar PIX.",
+            order_id: order.id,
+            order_number: order.order_number,
+            detail: e instanceof Error ? e.message : String(e),
+          },
+          { status: 502 }
+        );
+      }
+
+      await admin.from("payments").insert({
+        order_id: order.id,
+        provider: "fluxpay",
+        provider_payment_id: pix.id,
+        idempotency_key: idempotencyKey,
+        amount: total,
+        status: pix.status || "pending",
+        pix_copy_paste: pix.pix_copy_paste || null,
+        pix_qr_code_base64: pix.pix_qr_code_base64 || null,
+        expires_at: pix.expires_at || null,
+        provider_metadata: pix as unknown as Record<string, unknown>,
+      });
+
+      return NextResponse.json({
+        payment_method: "pix",
+        order_id: order.id,
+        order_number: order.order_number,
+        amount: total,
+        subtotal,
+        discount_total,
+        shipping_total,
+        coupon_code: applied_coupon,
+        pix_copy_paste: pix.pix_copy_paste,
+        pix_qr_code_base64: pix.pix_qr_code_base64,
+        payment_id: pix.id,
+        status: pix.status,
+      });
+    }
+
+    // ========== PIX PARCELADO (sistema interno) ==========
+    const count = instCount as InstallmentOption;
+    const amounts = getInstallmentAmounts(total, count, interestRate);
+    const preview = calculateInstallments(total, count, interestRate);
+
+    // Cria registros de todas as parcelas
+    const installmentRows = amounts.map((amount, idx) => ({
+      order_id: order.id,
+      installment_number: idx + 1,
+      amount,
+      due_date: preview.dueDates[idx],
+      status: "pending" as const,
+    }));
+
+    const { data: createdInstallments, error: instErr } = await admin
+      .from("installments")
+      .insert(installmentRows)
+      .select("id, installment_number, amount, due_date, status");
+
+    if (instErr || !createdInstallments?.length) {
+      console.error("[payments/create] installments", instErr);
+      return NextResponse.json(
+        {
+          message:
+            "Pedido criado, mas falha ao registrar parcelas. Execute o schema PIX_PARCELADO_SCHEMA.sql no Supabase.",
+          order_id: order.id,
+          order_number: order.order_number,
+          detail: instErr?.message,
+        },
+        { status: 500 }
+      );
+    }
+
+    // Gera PIX apenas da 1ª parcela via FluxPay
+    const first = createdInstallments.find((i) => i.installment_number === 1)!;
+    const amountCents = Math.round(Number(first.amount) * 100);
+    const idempotencyKey = `inst-${first.id}-${randomUUID()}`;
+
     let pix;
     try {
       pix = await createPixPayment({
-        amountCents: amount_cents,
-        description: `Pedido ${order.order_number} — TITAN SOUND`,
+        amountCents,
+        description: `Parcela 1/${count} — Pedido ${order.order_number} — TITAN SOUND`,
         orderId: order.id,
         customerEmail: customer_email || user.email || undefined,
-        customerName: customer_name || undefined,
+        customerName: buyerFullName || customer_name || undefined,
         idempotencyKey,
       });
     } catch (e) {
       return NextResponse.json(
         {
-          message: "Pedido criado, mas falha ao gerar PIX.",
+          message: "Parcelas registradas, mas falha ao gerar PIX da 1ª parcela.",
           order_id: order.id,
           order_number: order.order_number,
+          installments: createdInstallments,
           detail: e instanceof Error ? e.message : String(e),
         },
         { status: 502 }
       );
     }
 
-    const { error: payErr } = await admin.from("payments").insert({
-      order_id: order.id,
-      provider: "fluxpay",
-      provider_payment_id: pix.id,
-      idempotency_key: idempotencyKey,
-      amount: total,
-      status: pix.status || "pending",
-      pix_copy_paste: pix.pix_copy_paste || null,
-      pix_qr_code_base64: pix.pix_qr_code_base64 || null,
-      expires_at: pix.expires_at || null,
-      provider_metadata: pix as unknown as Record<string, unknown>,
-    });
+    // Salva payment e vincula à 1ª parcela
+    const { data: paymentRow } = await admin
+      .from("payments")
+      .insert({
+        order_id: order.id,
+        provider: "fluxpay",
+        provider_payment_id: pix.id,
+        idempotency_key: idempotencyKey,
+        amount: first.amount,
+        status: pix.status || "pending",
+        pix_copy_paste: pix.pix_copy_paste || null,
+        pix_qr_code_base64: pix.pix_qr_code_base64 || null,
+        expires_at: pix.expires_at || null,
+        provider_metadata: {
+          ...(pix as unknown as Record<string, unknown>),
+          installment_id: first.id,
+          installment_number: 1,
+        },
+      })
+      .select("id")
+      .single();
 
-    if (payErr) {
-      console.error("[payments/create] payment row", payErr);
-    }
+    await admin
+      .from("installments")
+      .update({
+        payment_id: paymentRow?.id ?? null,
+        provider_payment_id: pix.id,
+        pix_copy_paste: pix.pix_copy_paste || null,
+        pix_qr_code_base64: pix.pix_qr_code_base64 || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", first.id);
 
     return NextResponse.json({
+      payment_method: "pix_installment",
       order_id: order.id,
       order_number: order.order_number,
       amount: total,
-      subtotal,
-      discount_total,
-      shipping_total,
-      coupon_code: applied_coupon,
-      pix_copy_paste: pix.pix_copy_paste,
-      pix_qr_code_base64: pix.pix_qr_code_base64,
-      payment_id: pix.id,
+      installment_count: count,
+      interest_rate: interestRate,
+      installments: createdInstallments.map((i) => ({
+        id: i.id,
+        number: i.installment_number,
+        amount: i.amount,
+        due_date: i.due_date,
+        status: i.status,
+      })),
+      // PIX da 1ª parcela
+      first_installment: {
+        id: first.id,
+        number: 1,
+        amount: first.amount,
+        due_date: first.due_date,
+        pix_copy_paste: pix.pix_copy_paste,
+        pix_qr_code_base64: pix.pix_qr_code_base64,
+        payment_id: pix.id,
+      },
       status: pix.status,
     });
   } catch (e) {
