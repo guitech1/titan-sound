@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Package, Image, ShoppingCart, Ticket, Star, Users, Settings, FolderTree, CreditCard,
+  LayoutDashboard, Package, Image, ShoppingCart, Ticket, Star, Users, Settings, FolderTree, CreditCard, CalendarClock,
 } from "lucide-react";
 
 const links = [
@@ -12,6 +12,7 @@ const links = [
   { href: "/admin/categorias", label: "Categorias", icon: FolderTree },
   { href: "/admin/banners", label: "Banners", icon: Image },
   { href: "/admin/pedidos", label: "Pedidos", icon: ShoppingCart },
+  { href: "/admin/pix-parcelado", label: "Pix Parcelado", icon: CalendarClock },
   { href: "/admin/pagamentos", label: "Pagamentos", icon: CreditCard },
   { href: "/admin/cupons", label: "Cupons", icon: Ticket },
   { href: "/admin/avaliacoes", label: "Avaliações", icon: Star },
