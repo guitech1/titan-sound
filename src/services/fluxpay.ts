@@ -30,6 +30,8 @@ export interface CreatePixPaymentInput {
   customerName?: string;
   expiresInSeconds?: number;
   idempotencyKey: string;
+  /** Metadados extras (ex: installment_id) */
+  metadata?: Record<string, unknown>;
 }
 
 function getConfig() {
@@ -58,6 +60,7 @@ export async function createPixPayment(
       order_id: input.orderId,
       customer_email: input.customerEmail,
       customer_name: input.customerName,
+      ...(input.metadata || {}),
     },
     idempotency_key: input.idempotencyKey,
   };
