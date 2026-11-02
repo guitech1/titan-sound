@@ -1,0 +1,41 @@
+/**
+ * Validação e formatação de CPF (algoritmo oficial).
+ * Nunca armazenar o CPF em claro — usar hash no backend.
+ */
+
+export function stripCpf(value: string): string {
+  return (value || "").replace(/\D/g, "").slice(0, 11);
+}
+
+export function formatCpf(value: string): string {
+  const d = stripCpf(value);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9, 11)}`;
+}
+
+/** Valida dígitos verificadores e rejeita sequências iguais. */
+export function isValidCpf(value: string): boolean {
+  const cpf = stripCpf(value);
+  if (cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false; // todos iguais
+
+  const calc = (base: string, factor: number) => {
+    let total = 0;
+    for (let i = 0; i < base.length; i++) {
+      total += parseInt(base[i], 10) * (factor - i);
+    }
+    const rest = (total * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+
+  const d1 = calc(cpf.slice(0, 9), 10);
+  const d2 = calc(cpf.slice(0, 10), 11);
+  return d1 === parseInt(cpf[9], 10) && d2 === parseInt(cpf[10], 10);
+}
+
+/** Máscara para input controlado. */
+export function maskCpfInput(raw: string): string {
+  return formatCpf(raw);
+}
