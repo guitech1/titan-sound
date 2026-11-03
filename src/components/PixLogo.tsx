@@ -3,12 +3,12 @@
 import { cn } from "@/lib/utils";
 
 /**
- * Logo oficial do Pix (marca Banco Central do Brasil).
- * Arquivo: /public/pix-logo.svg
+ * Marca oficial Pix disponibilizada pelo Banco Central do Brasil.
+ * Fonte: https://www.bcb.gov.br/content/estabilidadefinanceira/piximg/logo_pix.png
  */
 export function PixLogo({
   className,
-  size = 40,
+  size = 44,
 }: {
   className?: string;
   size?: number;
@@ -16,11 +16,11 @@ export function PixLogo({
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
-      src="/pix-logo.svg"
+      src="https://www.bcb.gov.br/content/estabilidadefinanceira/piximg/logo_pix.png"
       alt="Pix"
-      width={size}
+      width={size * 3}
       height={size}
-      className={cn("shrink-0 rounded-xl object-cover shadow-sm", className)}
+      className={cn("h-11 w-auto shrink-0 object-contain", className)}
       draggable={false}
     />
   );
