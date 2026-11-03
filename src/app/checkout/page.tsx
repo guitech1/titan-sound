@@ -497,7 +497,7 @@ export default function CheckoutPage() {
                       : "border-border bg-card/50 hover:border-primary/40 hover:bg-card"
                   }`}
                 >
-                  <PixLogo className="h-11 w-11" size={44} />
+                  <PixLogo className="h-11 w-auto" size={44} />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="font-semibold">Pix à vista</p>
@@ -525,7 +525,7 @@ export default function CheckoutPage() {
                   }`}
                 >
                   <div className="relative">
-                    <PixLogo className="h-11 w-11" size={44} />
+                    <PixLogo className="h-11 w-auto" size={44} />
                     <span className="absolute -right-1 -top-1 rounded-md bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                       4x
                     </span>
