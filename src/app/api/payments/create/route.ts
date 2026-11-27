@@ -10,6 +10,7 @@ import {
   calculateInstallments,
   type InstallmentOption,
 } from "@/lib/installments";
+import { calculateShipping } from "@/lib/shipping";
 
 function getAdminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,7 +24,6 @@ function getAdminClient() {
 }
 
 function parseBirthDate(value: string): string | null {
-  // Aceita DD/MM/AAAA ou YYYY-MM-DD
   const v = (value || "").trim();
   let y: number, m: number, d: number;
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(v)) {
@@ -45,17 +45,12 @@ function parseBirthDate(value: string): string | null {
   }
   const now = new Date();
   if (date > now) return null;
-  // Idade mínima razoável (16 anos)
   const min = new Date();
   min.setFullYear(min.getFullYear() - 16);
   if (date > min) return null;
   return `${y.toString().padStart(4, "0")}-${m.toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`;
 }
 
-/**
- * Cria pedido + (opcionalmente) parcelas internas + cobrança PIX via FluxPay.
- * payment_method: "pix" | "pix_installment"
- */
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
@@ -234,8 +229,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const shipping_total = subtotal - discount_total >= 299 ? 0 : 25;
-    const total = Math.max(0, subtotal - discount_total + shipping_total);
+    const amountAfterDiscount = Math.max(0, subtotal - discount_total);
+    const shippingQuote = calculateShipping(amountAfterDiscount);
+    const shipping_total = shippingQuote.cost;
+    const total = Math.max(0, amountAfterDiscount + shipping_total);
 
     if (total < 0.01) {
       return NextResponse.json({ message: "Valor inválido." }, { status: 400 });
@@ -243,7 +240,6 @@ export async function POST(req: NextRequest) {
 
     const order_number = `TS-${Date.now().toString(36).toUpperCase()}`;
 
-    // --- Dados do comprador (parcelado) ---
     let buyerCpfHash: string | null = null;
     let buyerFullName: string | null = null;
     let buyerBirth: string | null = null;
@@ -255,7 +251,7 @@ export async function POST(req: NextRequest) {
       buyerFullName = (buyer_full_name || "").trim().replace(/\s+/g, " ");
       buyerBirth = parseBirthDate(buyer_birth_date || "");
       instCount = Number(installment_count) as InstallmentOption;
-      interestRate = 0; // configurável no futuro
+      interestRate = 0;
     }
 
     const { data: order, error: orderErr } = await admin
@@ -311,7 +307,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ========== PIX À VISTA (fluxo original) ==========
     if (!isInstallment) {
       const amount_cents = Math.round(total * 100);
       const idempotencyKey = `order-${order.id}-${randomUUID()}`;
@@ -366,12 +361,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ========== PIX PARCELADO (sistema interno) ==========
     const count = instCount as InstallmentOption;
     const amounts = getInstallmentAmounts(total, count, interestRate);
     const preview = calculateInstallments(total, count, interestRate);
 
-    // Cria registros de todas as parcelas
     const installmentRows = amounts.map((amount, idx) => ({
       order_id: order.id,
       installment_number: idx + 1,
@@ -399,7 +392,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Gera PIX apenas da 1ª parcela via FluxPay
     const first = createdInstallments.find((i) => i.installment_number === 1)!;
     const amountCents = Math.round(Number(first.amount) * 100);
     const idempotencyKey = `inst-${first.id}-${randomUUID()}`;
@@ -427,7 +419,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Salva payment e vincula à 1ª parcela
     const { data: paymentRow } = await admin
       .from("payments")
       .insert({
@@ -456,7 +447,7 @@ export async function POST(req: NextRequest) {
         provider_payment_id: pix.id,
         pix_copy_paste: pix.pix_copy_paste || null,
         pix_qr_code_base64: pix.pix_qr_code_base64 || null,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date().getTime() ? new Date().toISOString() : new Date().toISOString(),
       })
       .eq("id", first.id);
 
@@ -474,7 +465,6 @@ export async function POST(req: NextRequest) {
         due_date: i.due_date,
         status: i.status,
       })),
-      // PIX da 1ª parcela
       first_installment: {
         id: first.id,
         number: 1,
