@@ -28,8 +28,8 @@ export default async function HomePage() {
       <section className="border-b border-white/5 bg-[#070b14]/80">
         <div className="container mx-auto grid grid-cols-2 gap-4 px-4 py-8 md:grid-cols-4 md:gap-6 md:py-10">
           {[
-            { icon: Truck, title: "Entrega rápida", desc: "Envio para todo o Brasil" },
-            { icon: Shield, title: "Compra segura", desc: "Pagamento protegido" },
+            { icon: Truck, title: "Frete grátis", desc: "A partir de R$ 250 · 6 a 15 dias" },
+            { icon: Shield, title: "Compra segura", desc: "PIX protegido · LGPD" },
             { icon: Zap, title: "Performance", desc: "Equipamentos de alto nível" },
             { icon: Headphones, title: "Suporte", desc: "Atendimento especializado" },
           ].map(({ icon: Icon, title, desc }) => (
@@ -121,6 +121,43 @@ export default async function HomePage() {
           </Button>
         </section>
       )}
+
+      <section className="container mx-auto px-4 py-12">
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 md:p-10">
+          <h2 className="mb-4 text-xl font-bold text-white md:text-2xl">
+            Por que comprar na Titan Sound?
+          </h2>
+          <div className="grid gap-6 md:grid-cols-3">
+            <div>
+              <p className="mb-1 font-semibold text-white">Especialistas em som</p>
+              <p className="text-sm text-slate-400">
+                Foco em equipamentos de áudio automotivo de alta performance.
+              </p>
+            </div>
+            <div>
+              <p className="mb-1 font-semibold text-white">Pagamento transparente</p>
+              <p className="text-sm text-slate-400">
+                PIX à vista ou PIX parcelado em até 4x — sem surpresas no checkout.
+              </p>
+            </div>
+            <div>
+              <p className="mb-1 font-semibold text-white">Frete e garantia claros</p>
+              <p className="text-sm text-slate-400">
+                Frete grátis a partir de R$ 250, prazo estimado de 6 a 15 dias e
+                garantia legal do consumidor.
+              </p>
+            </div>
+          </div>
+          <div className="mt-6">
+            <Button asChild>
+              <Link href="/produtos">
+                Ver catálogo
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 }
