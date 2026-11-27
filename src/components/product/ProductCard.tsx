@@ -96,6 +96,12 @@ export function ProductCard({ product }: { product: ProductCardData }) {
             <ShoppingCart className="h-4 w-4" />
             Adicionar
           </Button>
+          <Link
+            href={`/produtos/${product.slug}`}
+            className="block text-center text-[11px] text-muted-foreground hover:text-primary transition-colors"
+          >
+            Clique no produto para ver as informações
+          </Link>
         </div>
       </div>
     </article>
